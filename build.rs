@@ -1,35 +1,26 @@
-use std::io::ErrorKind;
 use std::process::*;
 
-const PATH_PACKAGES : &'static str = "package.json";
+const PATH_PACKAGES: &'static str = "package.json";
 
-fn main() {
+fn exec(cmd: &str) -> Result<(), ()> {
+    eprintln!("Bootstrap: Attempting to execute `{}`", cmd);
+
+    let status = if cfg!(target_os = "windows") {
+        Command::new("cmd").args(&["/c", cmd]).status()
+    } else {
+        Command::new("sh").args(&["-c", cmd]).status()
+    };
+
+    match status {
+        Ok(status) if status.success() => Ok(()),
+        // error details are already printed to stdout/stderr, so just () is fine
+        _ => Err(()),
+    }
+}
+
+fn main() -> Result<(), ()> {
     // Install Node packages if necessary.
     println!("cargo:rerun-if-changed={}", PATH_PACKAGES);
 
-    // First try with `yarn`, if available.
-    println!("Bootstrap: Attempting to install dependencies with yarn.");
-    match Command::new("yarn")
-        .arg("install")
-        .spawn()
-    {
-        Ok(mut process) => {
-            process.wait()
-                .expect("Bootstrap: Could not complete `yarn install`");
-        }
-        Err(err) => {
-            if let ErrorKind::NotFound = err.kind() {
-                println!("Bootstrap: Yarn not available, attempting to install dependencies with npm.");
-                // Otherwise, try with `npm`.
-                Command::new("npm")
-                    .arg("install")
-                    .spawn()
-                    .expect("Bootstrap: Could not launch either `yarn install` or `npm install`")
-                    .wait()
-                    .expect("Bootstrap: Could not complete `npm` install");
-            } else {
-                panic!("Bootstrap: Unexpected error during yarn/npm install: {:?}", err);
-            }
-        }
-    }
+    exec("yarn install").or_else(|()| exec("npm install"))
 }
